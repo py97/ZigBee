@@ -1,3 +1,6 @@
+/*********************************************************************
+* INCLUDES
+*/
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -20,7 +23,9 @@
 
 #include "DHT11.h"
 #include "nwk_globals.h"
-
+/*********************************************************************
+* MACROS
+*/
 #define COORD_ADDR   0x00
 #define ED_ADDR      0x01
 #define UART0        0x00
@@ -36,9 +41,12 @@
 static uint16 EndDeviceID = 0x0001; //终端ID，重要
 //---------------------------------------------------------------------
 
+
 unsigned char tempRX;
 //变量
+
 unsigned char  Recdata[128];
+
 
 /*********************************************************************/
 
@@ -57,14 +65,20 @@ uint8 fc=0x00;
 uint8 Data_Report[30]={0};
 uint8 flag=0x00;
 
+/*********************************************************************/
+/* CONSTANTS
+*/
+
 #if !defined( SERIAL_APP_PORT )
 #define SERIAL_APP_PORT  0
 #endif
 
 #if !defined( SERIAL_APP_BAUD )
-#define SERIAL_APP_BAUD  HAL_UART_BR_115200     //波特率
+//#define SERIAL_APP_BAUD  HAL_UART_BR_38400
+#define SERIAL_APP_BAUD  HAL_UART_BR_115200
 #endif
 
+// When the Rx buf space is less than this threshold, invoke the Rx callback.
 #if !defined( SERIAL_APP_THRESH )
 #define SERIAL_APP_THRESH  64
 #endif
@@ -77,14 +91,17 @@ uint8 flag=0x00;
 #define SERIAL_APP_TX_SZ  128
 #endif
 
+// Millisecs of idle time after a byte is received before invoking Rx callback.
 #if !defined( SERIAL_APP_IDLE )
 #define SERIAL_APP_IDLE  6
 #endif
 
+// Loopback Rx bytes to Tx for throughput testing.
 #if !defined( SERIAL_APP_LOOPBACK )
 #define SERIAL_APP_LOOPBACK  FALSE
 #endif
 
+// This is the max byte count per OTA message.
 #if !defined( SERIAL_APP_TX_MAX )
 //#define SERIAL_APP_TX_MAX  30
 #define SERIAL_APP_TX_MAX  40
@@ -92,6 +109,7 @@ uint8 flag=0x00;
 
 #define SERIAL_APP_RSP_CNT  4
 
+// This list should be filled with Application specific Cluster IDs.
 const cId_t SerialApp_ClusterList[SERIALAPP_MAX_CLUSTERS] =
 {
 	SERIALAPP_CLUSTERID
@@ -118,8 +136,27 @@ const endPointDesc_t SerialApp_epDesc =
     noLatencyReqs
 };
 
+/*********************************************************************
+* TYPEDEFS
+*/
+
+/*********************************************************************
+* GLOBAL VARIABLES
+*/
+
 uint8 SerialApp_TaskID;    // Task ID for internal task/event processing.
 
+/*********************************************************************
+* EXTERNAL VARIABLES
+*/
+
+/*********************************************************************
+* EXTERNAL FUNCTIONS
+*/
+
+/*********************************************************************
+* LOCAL VARIABLES
+*/
 static bool SendFlag = 0;
 
 static uint8 SerialApp_MsgID;
@@ -139,6 +176,12 @@ static afAddrType_t SerialApp_TxAddr;
 static uint8 SerialApp_MsgID;
 
 uint8 NodeData[MAX_NODE][5];         //终端数据缓冲区 0=温度 1=湿度 2=气体 3=灯
+
+
+
+/*********************************************************************
+* LOCAL FUNCTIONS
+*/
 
 static void SerialApp_HandleKeys( uint8 shift, uint8 keys );
 static void SerialApp_ProcessMSGCmd( afIncomingMSGPacket_t *pkt );
@@ -160,6 +203,7 @@ void Init_Wifi(void)
 {
 
   HalLcdWriteString( "initwifi", HAL_LCD_LINE_2 );      
+ 
   HalUARTWrite(UART0, "AT+CIPMUX=1\r\n", 12);
   Delay_ms(500);
   tasksteps=STEP2;
@@ -169,44 +213,56 @@ void Init_Wifi(void)
 //初始化串口0
 void initUART0(void)
 {
-      //串口
+   //串口
       CLKCONCMD &= ~0x40;                         //设置系统时钟源为32MHZ晶振
       while(CLKCONSTA & 0x40);                    //等待晶振稳定
       CLKCONCMD &= ~0x47;                         //设置系统主时钟频率为32MHZ
-      PERCFG = 0x00;	                          //位置1 P0 口
-      P0SEL = 0x0c;	                          //P0_2,P0_3用作串口（外部设备功能）
-      P2DIR &= ~0XC0;                             //P0优先作为UART0
-      U0CSR |= 0x80;	                          //设置为UART方式
+  
+      PERCFG = 0x00;	//位置1 P0 口
+      P0SEL = 0x0c;	//P0_2,P0_3用作串口（外部设备功能）
+      P2DIR &= ~0XC0; //P0优先作为UART0
+
+      U0CSR |= 0x80;	//设置为UART方式
+      
       U0GCR |= 11;
-      U0BAUD |= 216;	                          //波特率设为115200 根据上面表中获得的数据
-      UTX0IF = 1;	                          //UART0 TX 中断标志初始置位0
-      U0CSR |= 0x40;                              //允许接收
-      IEN0 |= 0x84;                               //开总中断允许接收中断  
+      U0BAUD |= 216;	//波特率设为115200 根据上面表中获得的数据
+      UTX0IF = 1;	//UART0 TX 中断标志初始置位0
+
+      U0CSR |= 0x40; //允许接收
+      IEN0 |= 0x84; //开总中断允许接收中断  
+  
+  
 }
 
 void SerialApp_Init( uint8 task_id )
 {
-    halUARTCfg_t uartConfig;  
+	halUARTCfg_t uartConfig;
+    
     P0SEL &= 0xEf;                  //设置P0.4口为普通IO
     P0DIR |= 0x10;                  //设置P0.4为输出
     LAMP_PIN = 0;                   //高电平继电器断开;低电平继电器吸合
     P0SEL &= ~0x20;                 //设置P0.5为普通IO口
     P0DIR &= ~0x20;                 //P0.5定义为输入口
     P0SEL &= 0x7f;                  //P0_7配置成通用io
+	
 	SerialApp_TaskID = task_id;
 	//SerialApp_RxSeq = 0xC3;
+	
 	afRegister( (endPointDesc_t *)&SerialApp_epDesc );
+	
 	RegisterForKeys( task_id );
-	uartConfig.configured           = TRUE;              
+	
+	uartConfig.configured           = TRUE;              // 2x30 don't care - see uart driver.
 	uartConfig.baudRate             = SERIAL_APP_BAUD;
 	uartConfig.flowControl          = FALSE;
-	uartConfig.flowControlThreshold = SERIAL_APP_THRESH; 
-	uartConfig.rx.maxBufSize        = SERIAL_APP_RX_SZ;  
-	uartConfig.tx.maxBufSize        = SERIAL_APP_TX_SZ; 
-	uartConfig.idleTimeout          = SERIAL_APP_IDLE;   
-	uartConfig.intEnable            = TRUE;             
+	uartConfig.flowControlThreshold = SERIAL_APP_THRESH; // 2x30 don't care - see uart driver.
+	uartConfig.rx.maxBufSize        = SERIAL_APP_RX_SZ;  // 2x30 don't care - see uart driver.
+	uartConfig.tx.maxBufSize        = SERIAL_APP_TX_SZ;  // 2x30 don't care - see uart driver.
+	uartConfig.idleTimeout          = SERIAL_APP_IDLE;   // 2x30 don't care - see uart driver.
+	uartConfig.intEnable            = TRUE;              // 2x30 don't care - see uart driver.
 	uartConfig.callBackFunc         = SerialApp_CallBack;
 	HalUARTOpen (UART0, &uartConfig);
+        ////cici
 //如果是终端，就初始串口
 #if defined(ZDO_COORDINATOR)       
         
@@ -217,11 +273,12 @@ void SerialApp_Init( uint8 task_id )
 #if defined ( LCD_SUPPORTED )
 	HalLcdWriteString( "SerialApp", HAL_LCD_LINE_2 );
 #endif
-	//HalUARTWrite(UART0, "Init", 4);     
+	//HalUARTWrite(UART0, "Init", 4);
+        
 	ZDO_RegisterForZDOMsg( SerialApp_TaskID, End_Device_Bind_rsp );
 	ZDO_RegisterForZDOMsg( SerialApp_TaskID, Match_Desc_rsp );
-        //      Init_ESP8266();
-        //如果是协调器，初始化wifi
+ //       Init_ESP8266();
+//如果是协调器，初始化wifi
 #if defined(ZDO_COORDINATOR)       
         Init_Wifi();
 #else        
@@ -316,6 +373,16 @@ UINT16 SerialApp_ProcessEvent( uint8 task_id, UINT16 events )
 	return ( 0 ); 
 }
 
+/*********************************************************************
+* @fn      SerialApp_HandleKeys
+*
+* @brief   Handles all key events for this device.
+*
+* @param   shift - true if in shift/alt.
+* @param   keys  - bit field for key events.
+*
+* @return  none
+*/
 void SerialApp_HandleKeys( uint8 shift, uint8 keys )
 {
 	zAddrType_t txAddr;
@@ -347,6 +414,7 @@ void SerialApp_HandleKeys( uint8 shift, uint8 keys )
     {
         HalLedSet ( HAL_LED_4, HAL_LED_MODE_OFF );
         
+        // Initiate an End Device Bind Request for the mandatory endpoint
         txAddr.addrMode = Addr16Bit;
         txAddr.addr.shortAddr = 0x0000; // Coordinator
         ZDP_EndDeviceBindReq( &txAddr, NLME_GetShortAddr(), 
@@ -365,6 +433,7 @@ void SerialApp_HandleKeys( uint8 shift, uint8 keys )
     {
         HalLedSet ( HAL_LED_4, HAL_LED_MODE_OFF );
         
+        // Initiate a Match Description Request (Service Discovery)
         txAddr.addrMode = AddrBroadcast;
         txAddr.addr.shortAddr = NWK_BROADCAST_SHORTADDR;
         ZDP_MatchDescReq( &txAddr, NWK_BROADCAST_SHORTADDR,
@@ -388,6 +457,7 @@ void SerialApp_ProcessMSGCmd( afIncomingMSGPacket_t *pkt )
 	//查询单个终端上所有传感器的数据 3A 00 01 02 39 23  响应：3A 00 01 02 00 00 00 00 xor 23
 	switch ( pkt->clusterId )
 	{
+	// A message with a serial data block to be transmitted on the serial port.
 	case SERIALAPP_CLUSTERID:
         osal_memcpy(afRxData, pkt->cmd.Data, pkt->cmd.DataLength);
         
@@ -412,13 +482,17 @@ void SerialApp_ProcessMSGCmd( afIncomingMSGPacket_t *pkt )
                 NodeData[afRxData[2]-1][1] = afRxData[5];
                 NodeData[afRxData[2]-1][2] = afRxData[6];
                 NodeData[afRxData[2]-1][3] = afRxData[7];
-                NodeData[afRxData[2]-1][4] = 0x00;               
+                NodeData[afRxData[2]-1][4] = 0x00;
+                
+ /////////////////////////////cici////*******************************////////////////               
                 //协调器采集的数据 待发送
               osal_memset(Data_Report,0x00,30);
               osal_memcpy(Data_Report, afRxData, 30); 
 
               osal_memset(afRxData,0x00,30);
+//////////////////**************************************/////////////////////////////////
               }
+           ///////////////////////////////////////////////   
             
         #if UART_DEBUG
             HalUARTWrite (UART0, NodeData[afRxData[3]-1], 4); //调试时通过串口输出
@@ -449,6 +523,7 @@ void SerialApp_ProcessMSGCmd( afIncomingMSGPacket_t *pkt )
             break;
         }
         break;
+		// A response to a received serial data block.
 		case SERIALAPP_CLUSTERID2:
 			if ((pkt->cmd.Data[1] == SerialApp_TxSeq) &&
 				((pkt->cmd.Data[0] == OTA_SUCCESS) || (pkt->cmd.Data[0] == OTA_DUP_MSG)))
@@ -458,6 +533,7 @@ void SerialApp_ProcessMSGCmd( afIncomingMSGPacket_t *pkt )
 			}
 			else
 			{
+				// Re-start timeout according to delay sent from other device.
 				delay = BUILD_UINT16( pkt->cmd.Data[2], pkt->cmd.Data[3] );
 				osal_start_timerEx( SerialApp_TaskID, SERIALAPP_SEND_EVT, delay );
 			}
@@ -493,7 +569,6 @@ uint8 SendData(uint8 addr, uint8 FC)
 		TxBuffer[index+1] = 0x23; 
 		
 		HalUARTWrite(UART0, TxBuffer, index+2);
-                HalUARTWrite(UART0, "AT+RST", 6);
         ret = 1;
 		break;
 	case 0x02: //查询单个终端上所有传感器的数据
@@ -513,17 +588,26 @@ uint8 SendData(uint8 addr, uint8 FC)
     return ret;
 }
 
+/*********************************************************************
+* @fn      SerialApp_Send
+*
+* @brief   Send data OTA.
+*
+* @param   none
+*
+* @return  none
+*/
 static void SerialApp_Send(void)
 {
     uint8  addr, FC;
-//  uint8 checksum=0;
+//    uint8 checksum=0;
     int len=0;
     int i;
     
     uint8 length[3]={0};
     uint8 tmpbuf[256]={0};
     uint8 cmd[256]={0};
-//  char *p=NULL;
+ //  char *p=NULL;
 	
 #if SERIAL_APP_LOOPBACK
 	if (SerialApp_TxLen < SERIAL_APP_TX_MAX)
@@ -531,6 +615,7 @@ static void SerialApp_Send(void)
 		SerialApp_TxLen += HalUARTRead(SERIAL_APP_PORT, SerialApp_TxBuf+SerialApp_TxLen+1,
 			SERIAL_APP_TX_MAX-SerialApp_TxLen);
 	}
+	
 	if (SerialApp_TxLen)
 	{
 		(void)SerialApp_TxAddr;
@@ -550,6 +635,8 @@ static void SerialApp_Send(void)
         {
         if (SerialApp_TxLen)
         {
+            
+//////////////////////////***********************/////////////////////////////////////////////
              if(strstr((char *)SerialApp_TxBuf,"+IPD")!=NULL) //接收的指令
              {
                sscanf(SerialApp_TxBuf,"%*[^,]%*c%*[^,]%*c%[^:]%*c%s]",length,tmpbuf);            
@@ -575,6 +662,7 @@ static void SerialApp_Send(void)
                                                          SERIALAPP_CLUSTERID,
                                                          len, cmd,
                                                          &SerialApp_MsgID, 0, AF_DEFAULT_RADIUS)) 
+
                   {
                     Delay_ms(500);
                     HalLcdWriteString( "cmd send[ok]....", HAL_LCD_LINE_3 );
@@ -598,8 +686,12 @@ static void SerialApp_Send(void)
                       flag=0x01;
                     }
              //       Delay_ms(500);
-               }                                           
-               HalLcdWriteString( "wait cmd....", HAL_LCD_LINE_3 );               
+               }              
+               
+                                              
+               HalLcdWriteString( "wait cmd....", HAL_LCD_LINE_3 );
+               
+               
              }        
               //    sprintf(Recdata,"%s",SerialApp_TxBuf); ////????
              //     HalLcdWriteString( Recdata, HAL_LCD_LINE_2 );
@@ -609,12 +701,14 @@ static void SerialApp_Send(void)
                    {                     
                      HalLcdWriteString( "CIPMUX...[ok].", HAL_LCD_LINE_2 );
                      HalUARTWrite(UART0, "AT+CIPSERVER=1,33333\r\n", 21);
-                     Delay_ms(500);   
+                     Delay_ms(500);
+               
                      tasksteps = STEP3;
                    }
                    else if(tasksteps == STEP3)
                    {
-                      HalLcdWriteString( "Init Server.[ok]", HAL_LCD_LINE_2 );  
+                      HalLcdWriteString( "Init Server.[ok]", HAL_LCD_LINE_2 );
+                      
                        tasksteps = STEP4;                                 
                    }
               /*     else if((strstr(SerialApp_TxBuf,"Link")!=NULL))
@@ -662,12 +756,22 @@ static void SerialApp_Send(void)
                osal_memset(SerialApp_TxBuf,0x00,31);            
              
                len=0;
-               SerialApp_TxLen = 0;             
+               SerialApp_TxLen = 0;  
+ //////////////////////////***********************/////////////////////////////////////////////           
         }
     }
 #endif
 }
 
+/*********************************************************************
+* @fn      SerialApp_Resp
+*
+* @brief   Send data OTA.
+*
+* @param   none
+*
+* @return  none
+*/
 static void SerialApp_Resp(void)
 {
 	if (afStatus_SUCCESS != AF_DataRequest(&SerialApp_RxAddr,
@@ -680,6 +784,16 @@ static void SerialApp_Resp(void)
 	}
 }
 
+/*********************************************************************
+* @fn      SerialApp_CallBack
+*
+* @brief   Send data OTA.
+*
+* @param   port - UART port.
+* @param   event - the UART port event flag.
+*
+* @return  none
+*/
 static void SerialApp_CallBack(uint8 port, uint8 event)
 {
 	(void)port;
@@ -695,36 +809,37 @@ static void SerialApp_CallBack(uint8 port, uint8 event)
 	SerialApp_Send();
                   
         }      
+          
+          
+	
 }
 
+
+//------------------------------------------------------------------------------------------------------------------------------------------
 //查询单个终端上所有传感器的数据 3A 00 01 02 XX 23  响应：3A 00 01 02 00 00 00 00 xor 23
 void SerialApp_SendPeriodicMessage( void )
 {
     uint8 SendBuf[10]={0};
-    //byte temp[2],strTemp[2];
     
     SendBuf[0] = 0x3A;                          
     SendBuf[1] = HI_UINT16( EndDeviceID );
     SendBuf[2] = LO_UINT16( EndDeviceID );
     SendBuf[3] = 0x02;                       //FC
+    
     Delay_ms(500);
     DHT11();                //获取温湿度
     Delay_ms(500);
+
     SendBuf[4] = wendu;  
     SendBuf[5] = shidu;  
     SendBuf[6] = GetGas();  //获取气体传感器的状态  
     SendBuf[7] = GetLamp(); //获得灯的状态
     SendBuf[8] = XorCheckSum(SendBuf, 9);
     SendBuf[9] = 0x23;
+  
     SerialApp_TxAddr.addrMode = (afAddrMode_t)Addr16Bit;
     SerialApp_TxAddr.endPoint = SERIALAPP_ENDPOINT;
-    SerialApp_TxAddr.addr.shortAddr = 0x00; 
-        
-    //temp[0] =12+0x30;
-    //temp[1] =3+0x30;
-    //osal_memcpy(strTemp, temp, 2);
-    //HalUARTWrite(0, strTemp, 2);
-    
+    SerialApp_TxAddr.addr.shortAddr = 0x00;  
     if ( AF_DataRequest( &SerialApp_TxAddr, (endPointDesc_t *)&SerialApp_epDesc,
                SERIALAPP_CLUSTERID,
                10,
@@ -733,30 +848,30 @@ void SerialApp_SendPeriodicMessage( void )
                0, 
                AF_DEFAULT_RADIUS ) == afStatus_SUCCESS )
     {
-      //HalUARTWrite (0, "SendSuccess\n", 13);
-      //osal_memcpy(strTemp, temp, 2);
-      //HalUARTWrite(0, strTemp, 2);
-      HalUARTWrite (0, "SendSuccess\n", 13);
-      //osal_memcpy(strTemp, SendBuf, 10);
-      //HalUARTWrite(0, strTemp, 10);
-      HalUARTWrite(0, "\n",1);
-
+    // Successfully requested to be sent.
+      HalUARTWrite (UART0, "SendSuccess\n", 13);
     }
     else
     {
+    // Error occurred in request to send.
       HalUARTWrite (UART0, "SendFail\n", 10); 
     }
 }
+
+
 
 //通过串口输出短地址 IEEE
 void PrintAddrInfo(uint16 shortAddr, uint8 *pIeeeAddr)
 {
     uint8 strIeeeAddr[17] = {0};
     char  buff[30] = {0};    
+    
     //获得短地址   
     sprintf(buff, "shortAddr:%04X   IEEE:", shortAddr);  
+ 
     //获得IEEE地址
     GetIeeeAddr(pIeeeAddr, strIeeeAddr);
+//cici
     #if UART_DEBUG
     HalUARTWrite (UART0, (uint8 *)buff, strlen(buff));
     Delay_ms(10);
@@ -769,14 +884,19 @@ void AfSendAddrInfo(void)
 {
     uint16 shortAddr;
     uint8 strBuf[11]={0};  
+    
     SerialApp_TxAddr.addrMode = (afAddrMode_t)Addr16Bit;
     SerialApp_TxAddr.endPoint = SERIALAPP_ENDPOINT;
     SerialApp_TxAddr.addr.shortAddr = 0x00;   
-    shortAddr=NLME_GetShortAddr(); 
+    
+    shortAddr=NLME_GetShortAddr();
+    
     strBuf[0] = 0x3B;                          //发送地址给协调器 可用于点播
     strBuf[1] = HI_UINT16( shortAddr );        //存放短地址高8位
     strBuf[2] = LO_UINT16( shortAddr );        //存放短地址低8位
+    
     osal_memcpy(&strBuf[3], NLME_GetExtAddr(), 8);
+        
    if ( AF_DataRequest( &SerialApp_TxAddr, (endPointDesc_t *)&SerialApp_epDesc,
                        SERIALAPP_CLUSTERID,
                        11,
@@ -868,6 +988,7 @@ uint8 GetGas( void )
   return ret;
 }
 
+//-------------------------------------------------------------------
 
 
 

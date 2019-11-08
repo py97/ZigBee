@@ -1,0 +1,49 @@
+body,html{
+    height: 100%;
+    overflow-y:hidden
+}
+
+.first{
+    height:100%;
+}
+.word{
+    position:absolute;
+    left: 10px;
+    right: 10px;
+    text-align: center;
+    margin-top: 50px;
+    font-size: 65px;
+    font-family:华文新魏;
+}
+
+.content {
+    color: #ffffff;
+    font-size: 40px;
+}
+.bg {
+    background: url('https://api.xygeng.cn/bing/1920.php');
+    height:100%;
+    text-align: center;
+    line-height: 600px;
+}
+.bg-blur {
+    float: left;
+    width: 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+    -webkit-filter: blur(2px);
+    -moz-filter: blur(2px);
+    -o-filter: blur(2px);
+    -ms-filter: blur(2px);
+    filter: blur(2px);
+}
+.content-front {
+    position:absolute;
+    left: 10px;
+    right: 10px;
+    height:600px;
+    line-height: 600px;
+    text-align: center;
+    margin-top: 300px;
+}
